@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSログイン施策 振り返りダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:'Noto Sans JP','Helvetica Neue',sans-serif; background:#f5f5f5; color:#000; }
+.wrap { max-width:900px; margin:0 auto; padding:24px 16px; }
+h1 { font-size:18px; font-weight:700; margin-bottom:4px; }
+.note { font-size:11px; color:#595959; margin-bottom:20px; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:20px; }
+.card { background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.card .label { font-size:11px; color:#595959; margin-bottom:4px; line-height:1.4; }
+.card .value { font-size:22px; font-weight:700; line-height:1.2; }
+.card .sub { font-size:11px; margin-top:3px; }
+.blue { color:#146af5; }
+.red  { color:#f72a48; }
+.gray { color:#595959; }
+.chart-block { background:#fff; border-radius:12px; padding:20px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.chart-block .title { font-size:13px; font-weight:700; margin-bottom:12px; }
+.legend { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:12px; font-size:11px; color:#474747; }
+.legend span { display:flex; align-items:center; gap:5px; }
+.dot { width:10px; height:10px; border-radius:2px; display:inline-block; }
+.ln  { width:18px; height:2px; display:inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CSログイン施策 振り返りダッシュボード</h1>
+  <p class="note">※ 第5回（6/17）は1ヶ月未経過のため定着率未確定 / 法人会員数は各施策月末時点 / 休眠7〜180日・エンタープライズ・プレミアム</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="label">法人会員数<br>（直近：5月末）</div>
+      <div class="value">44,918人</div>
+      <div class="sub blue">前回比 +865人</div>
+    </div>
+    <div class="card">
+      <div class="label">チャーン候補割合<br>（直近：5月）</div>
+      <div class="value red">32.1%</div>
+      <div class="sub red">前回比 +1.2pt</div>
+    </div>
+    <div class="card">
+      <div class="label">累計定着数<br>（第1〜4回）</div>
+      <div class="value">3,388人</div>
+    </div>
+    <div class="card">
+      <div class="label">直近定着率<br>（第4回）</div>
+      <div class="value blue">56.5%</div>
+      <div class="sub gray">目標49% ✅</div>
+    </div>
+  </div>
+
+  <div class="chart-block">
+    <div class="title">施策規模の推移</div>
+    <div class="legend">
+      <span><i class="dot" style="background:#a8caff;"></i>法人会員数（左軸）</span>
+      <span><i class="dot" style="background:#146af5;"></i>チャーン候補数（左軸）</span>
+      <span><i class="ln" style="background:#f72a48;"></i>候補/会員 割合（右軸）</span>
+    </div>
+    <div style="position:relative;height:260px;"><canvas id="scaleChart"></canvas></div>
+  </div>
+
+  <div class="chart-block">
+    <div class="title">施策後に動いたユーザー数</div>
+    <div class="legend">
+      <span><i class="dot" style="background:#146af5;"></i>施策後に動いたユーザー数（5日以内ログイン）</span>
+      <span><i class="ln" style="background:#0032ca;"></i>施策に対する割合（右軸）</span>
+    </div>
+    <div style="position:relative;height:280px;"><canvas id="barChart"></canvas></div>
+  </div>
+
+  <div class="chart-block">
+    <div class="title">KSF：定着率推移</div>
+    <div class="legend">
+      <span><i class="dot" style="background:#146af5;"></i>定着数</span>
+      <span><i class="dot" style="background:#a8caff;"></i>未定着（施策後に動いたユーザーのうち）</span>
+      <span><i class="ln" style="background:#0032ca;"></i>定着率（右軸）</span>
+    </div>
+    <div style="position:relative;height:300px;"><canvas id="retChart"></canvas></div>
+  </div>
+
+  <div class="chart-block">
+    <div class="title">KPI：開封率・CTR推移</div>
+    <div class="legend">
+      <span><i class="ln" style="background:#146af5;"></i>開封率（左軸）</span>
+      <span><i class="ln" style="background:#f72a48;border-top:2px dashed #f72a48;"></i>CTR（右軸）</span>
+    </div>
+    <div style="position:relative;height:260px;"><canvas id="kpiChart"></canvas></div>
+  </div>
+</div>
+
+<script>
+// =====================
+// ★ データ定義（毎月ここを更新）
+// =====================
+const labels   = ['第1回\n2/18','第2回\n3/18','第3回\n4/15','第4回\n5/13','第5回\n6/17'];
+const members  = [39160, 42198, 44053, 44918, null];
+const cands    = [10913, 12197, 12974, 14399, 14554];
+const acts     = [1545,  1404,  1637,  1910,  1762];
+const rets     = [754,   685,   870,   1079,  null];
+const retRate  = [48.8,  48.8,  53.1,  56.5,  null];
+const openRate = [29.7,  25.5,  25.4,  25.1,  23.7];
+const ctr      = [1.3,   1.1,   0.9,   null,  1.4];
+// =====================
+
+const noRets  = acts.map((a,i) => rets[i]!=null ? a-rets[i] : null);
+const candRate= members.map((m,i) => m ? +(cands[i]/m*100).toFixed(1) : null);
+const actRate = cands.map((c,i) => +(acts[i]/c*100).toFixed(1));
+
+const T  = {color:'#474747', font:{size:11}};
+const G  = {color:'rgba(0,0,0,0.07)'};
+const NG = {display:false};
+
+function drawLine(chart, axId, val, color, label, align='right') {
+  const ctx=chart.ctx, sc=chart.scales[axId], y=sc.getPixelForValue(val);
+  ctx.save();
+  ctx.strokeStyle=color+'55'; ctx.lineWidth=1; ctx.setLineDash([5,5]);
+  ctx.beginPath(); ctx.moveTo(chart.chartArea.left,y); ctx.lineTo(chart.chartArea.right,y); ctx.stroke();
+  ctx.setLineDash([]); ctx.fillStyle=color+'99'; ctx.font='10px sans-serif';
+  ctx.textAlign=align;
+  ctx.fillText(label, align==='right'?chart.chartArea.right-4:chart.chartArea.left+4, y-4);
+  ctx.restore();
+}
+function drawPtVals(chart, di, vals, color, suffix, dy=-12) {
+  const ctx=chart.ctx, meta=chart.getDatasetMeta(di);
+  ctx.save(); ctx.font='bold 11px sans-serif'; ctx.fillStyle=color; ctx.textAlign='center';
+  vals.forEach((v,i)=>{ if(v==null) return; const p=meta.data[i]; ctx.fillText(v+suffix,p.x,p.y+dy); });
+  ctx.restore();
+}
+
+// グラフ1
+new Chart(document.getElementById('scaleChart'),{
+  type:'bar',
+  data:{labels, datasets:[
+    {label:'法人会員数', data:members, backgroundColor:'#a8caff', yAxisID:'y1', order:3},
+    {label:'チャーン候補数', data:cands, backgroundColor:'#146af5', yAxisID:'y1', order:2},
+    {type:'line', label:'候補/会員 割合', data:candRate,
+     borderColor:'#f72a48', backgroundColor:'transparent',
+     borderWidth:2.5, pointRadius:5, pointBackgroundColor:'#f72a48',
+     tension:0.3, yAxisID:'y2', order:1, spanGaps:false}
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, layout:{padding:{top:26}},
+    plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>
+      ctx.dataset.yAxisID==='y2'
+        ?` ${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1)+'%':'—'}`
+        :` ${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toLocaleString()+'人':'—'}`
+    }}},
+    scales:{
+      x:{ticks:T, grid:NG},
+      y1:{max:62000, ticks:{...T,callback:v=>(v/10000).toFixed(0)+'万'}, grid:G},
+      y2:{position:'right', min:0, max:50, ticks:{...T,callback:v=>v+'%'}, grid:NG,
+          title:{display:true,text:'候補/会員 割合',color:'#f72a48',font:{size:11}}}
+    },
+    animation:{onComplete:function(){
+      const ctx=this.ctx;
+      drawPtVals(this, 2, candRate, '#f72a48', '%');
+      [0,1].forEach(di=>{
+        const meta=this.getDatasetMeta(di);
+        this.data.datasets[di].data.forEach((v,i)=>{
+          if(v==null) return;
+          const bar=meta.data[i], h=bar.base-bar.y;
+          if(h<16) return;
+          ctx.save(); ctx.fillStyle=di===0?'#0032ca':'#fff';
+          ctx.font='10px sans-serif'; ctx.textAlign='center';
+          ctx.fillText((v/10000).toFixed(1)+'万', bar.x, bar.y+h/2+4);
+          ctx.restore();
+        });
+      });
+    }}
+  }
+});
+
+// グラフ2
+new Chart(document.getElementById('barChart'),{
+  type:'bar',
+  data:{labels, datasets:[
+    {label:'施策後に動いたユーザー数', data:acts, backgroundColor:'#146af5', yAxisID:'y1', order:2},
+    {type:'line', label:'施策に対する割合', data:actRate,
+     borderColor:'#0032ca', backgroundColor:'transparent',
+     borderWidth:2.5, pointRadius:5, pointBackgroundColor:'#0032ca',
+     tension:0.3, yAxisID:'y2', order:1}
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, layout:{padding:{top:28}},
+    plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>
+      ctx.dataset.yAxisID==='y2'
+        ?` 施策に対する割合: ${ctx.parsed.y.toFixed(1)}%`
+        :` 施策後に動いたユーザー数: ${ctx.parsed.y.toLocaleString()}人`
+    }}},
+    scales:{
+      x:{ticks:T, grid:NG},
+      y1:{min:0, max:2500, ticks:{...T,callback:v=>v.toLocaleString()}, grid:G,
+          title:{display:true,text:'人数',color:'#474747',font:{size:11}}},
+      y2:{position:'right', min:0, max:20, ticks:{...T,callback:v=>v+'%'}, grid:NG,
+          title:{display:true,text:'施策に対する割合',color:'#0032ca',font:{size:11}}}
+    },
+    animation:{onComplete:function(){
+      const ctx=this.ctx;
+      const meta0=this.getDatasetMeta(0), meta1=this.getDatasetMeta(1);
+      acts.forEach((v,i)=>{
+        const bar=meta0.data[i], h=bar.base-bar.y;
+        if(h<30) return;
+        ctx.save(); ctx.textAlign='center'; ctx.fillStyle='#fff';
+        ctx.font='bold 12px sans-serif'; ctx.fillText(v.toLocaleString(), bar.x, bar.y+h/2+4);
+        ctx.restore();
+      });
+      drawPtVals(this, 1, actRate, '#0032ca', '%');
+    }}
+  }
+});
+
+// グラフ3
+new Chart(document.getElementById('retChart'),{
+  type:'bar',
+  data:{labels, datasets:[
+    {label:'定着数', data:rets, backgroundColor:'#146af5', stack:'s', yAxisID:'y1', order:2},
+    {label:'未定着', data:noRets, backgroundColor:'#a8caff', stack:'s', yAxisID:'y1', order:2},
+    {type:'line', label:'定着率', data:retRate,
+     borderColor:'#0032ca', backgroundColor:'transparent',
+     borderWidth:2.5, pointRadius:5, pointBackgroundColor:'#0032ca',
+     tension:0.3, yAxisID:'y2', order:1, spanGaps:false}
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, layout:{padding:{top:28}},
+    plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>
+      ctx.dataset.yAxisID==='y2'
+        ?` 定着率: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1)+'%':'—'}`
+        :` ${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toLocaleString()+'人':'—'}`
+    }}},
+    scales:{
+      x:{stacked:true, ticks:T, grid:NG},
+      y1:{stacked:true, max:2600, ticks:{...T,callback:v=>v.toLocaleString()}, grid:G,
+          title:{display:true,text:'人数',color:'#474747',font:{size:11}}},
+      y2:{position:'right', min:0, max:70, ticks:{...T,callback:v=>v+'%'}, grid:NG,
+          title:{display:true,text:'定着率',color:'#0032ca',font:{size:11}}}
+    },
+    animation:{onComplete:function(){
+      const ctx=this.ctx;
+      drawLine(this,'y2',49,'#0032ca','目標49%','right');
+      const meta0=this.getDatasetMeta(0), meta1=this.getDatasetMeta(1);
+      rets.forEach((v,i)=>{
+        if(v==null) return;
+        const bar=meta0.data[i], h=bar.base-bar.y;
+        if(h<20) return;
+        ctx.save(); ctx.textAlign='center'; ctx.fillStyle='#fff';
+        ctx.font='bold 12px sans-serif'; ctx.fillText(v.toLocaleString(), bar.x, bar.y+h/2+4);
+        ctx.restore();
+      });
+      noRets.forEach((v,i)=>{
+        if(v==null) return;
+        const bar=meta1.data[i], h=bar.base-bar.y;
+        if(h<20) return;
+        ctx.save(); ctx.textAlign='center'; ctx.fillStyle='#0032ca';
+        ctx.font='11px sans-serif'; ctx.fillText(v.toLocaleString(), bar.x, bar.y+h/2+4);
+        ctx.restore();
+      });
+      acts.forEach((a,i)=>{
+        if(rets[i]==null) return;
+        const bar=meta1.data[i];
+        ctx.save(); ctx.fillStyle='#474747'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('計'+a.toLocaleString()+'人', bar.x, bar.y-8);
+        ctx.restore();
+      });
+      drawPtVals(this, 2, retRate, '#0032ca', '%');
+    }}
+  }
+});
+
+// グラフ4
+new Chart(document.getElementById('kpiChart'),{
+  type:'line',
+  data:{labels, datasets:[
+    {label:'開封率', data:openRate,
+     borderColor:'#146af5', backgroundColor:'rgba(20,106,245,0.07)',
+     borderWidth:2.5, pointRadius:5, pointBackgroundColor:'#146af5',
+     tension:0.3, fill:true, yAxisID:'y1'},
+    {label:'CTR', data:ctr,
+     borderColor:'#f72a48', backgroundColor:'transparent',
+     borderWidth:2.5, pointRadius:5, pointBackgroundColor:'#f72a48',
+     tension:0.3, borderDash:[5,4], yAxisID:'y2', spanGaps:false}
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, layout:{padding:{top:24}},
+    plugins:{legend:{display:false}, tooltip:{callbacks:{
+      label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(1)+'%':'—'}`
+    }}},
+    scales:{
+      x:{ticks:T, grid:NG},
+      y1:{min:0, max:40, ticks:{...T,callback:v=>v+'%'}, grid:G,
+          title:{display:true,text:'開封率',color:'#146af5',font:{size:11}}},
+      y2:{position:'right', min:0, max:3, ticks:{...T,callback:v=>v.toFixed(1)+'%'}, grid:NG,
+          title:{display:true,text:'CTR',color:'#f72a48',font:{size:11}}}
+    },
+    animation:{onComplete:function(){
+      drawPtVals(this, 0, openRate, '#146af5', '%');
+      drawPtVals(this, 1, ctr, '#f72a48', '%');
+      drawLine(this,'y1',27,'#146af5','目標27%','left');
+      drawLine(this,'y2',1.2,'#f72a48','目標1.2%','right');
+    }}
+  }
+});
+</script>
+</body>
+</html>
